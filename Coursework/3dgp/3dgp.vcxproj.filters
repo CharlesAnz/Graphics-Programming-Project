@@ -86,6 +86,8 @@
     <None Include="shaders\basic.vert" />
     <None Include="shaders\basicEffect.frag" />
     <None Include="shaders\basicEffect.vert" />
+    <None Include="shaders\basicParticle.frag" />
+    <None Include="shaders\basicParticle.vert" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="textures\cloth.bmp">

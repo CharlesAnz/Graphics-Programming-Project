@@ -17,7 +17,7 @@ const float SOFTNESS = 0.45;
 
 // Colour definitions
 const vec3 lum = vec3(0.299, 0.587, 0.114);	// B&W filter
-const vec3 sepia = vec3(1.2, 1.0, 0.8); 
+const vec3 sepia = vec3(1.0, 1.0, 1.0); 
 
 void main(void) 
 {
@@ -43,7 +43,7 @@ void main(void)
     float gray = dot(outColor.rgb, lum);
 
     // mix-in the sepia effect
-    outColor.rgb = mix(outColor.rgb, vec3(gray) * sepia, 0.75);
+    outColor.rgb = mix(outColor.rgb, vec3(gray), 1.0);
 }
 
 
