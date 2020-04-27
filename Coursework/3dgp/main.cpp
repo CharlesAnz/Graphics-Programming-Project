@@ -814,7 +814,34 @@ void render()
 	// setup View Matrix
 	Program.SendUniform("matrixView", matrixView);
 
-	
+	// setup the point size
+	glEnable(GL_POINT_SPRITE);
+	glPointSize(2);
+
+	// particles
+	//glDepthMask(GL_FALSE);				// disable depth buffer updates
+	glActiveTexture(GL_TEXTURE0);			// choose the active texture
+	glBindTexture(GL_TEXTURE_2D, idTexSmoke);	// bind the texture
+
+	// RENDER THE PARTICLE SYSTEM
+	ProgramParticle.Use();
+
+	m = matrixView;
+	ProgramParticle.SendUniform("matrixModelView", m);
+
+	// render the buffer
+	glEnableVertexAttribArray(0);	// velocity
+	glEnableVertexAttribArray(1);	// start time
+	glBindBuffer(GL_ARRAY_BUFFER, idBufferVelocity);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glBindBuffer(GL_ARRAY_BUFFER, idBufferStartTime);
+	glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, 0);
+	glDrawArrays(GL_POINTS, 0, NPARTICLES);
+	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
+
+
+	glDepthMask(GL_TRUE);		// don't forget to switch the depth test updates back on
 	
 
 	renderObjects(m, theta, deltaT, true);
@@ -847,34 +874,7 @@ void render()
 	glDisableVertexAttribArray(attribTextCoord);
 	reshape(WImage, HImage);
 	
-	// setup the point size
-	glEnable(GL_POINT_SPRITE);
-	glPointSize(2);
 
-	// particles
-	//glDepthMask(GL_FALSE);				// disable depth buffer updates
-	glActiveTexture(GL_TEXTURE0);			// choose the active texture
-	glBindTexture(GL_TEXTURE_2D, idTexSmoke);	// bind the texture
-
-	// RENDER THE PARTICLE SYSTEM
-	ProgramParticle.Use();
-
-	m = matrixView;
-	ProgramParticle.SendUniform("matrixModelView", m);
-
-	// render the buffer
-	glEnableVertexAttribArray(0);	// velocity
-	glEnableVertexAttribArray(1);	// start time
-	glBindBuffer(GL_ARRAY_BUFFER, idBufferVelocity);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-	glBindBuffer(GL_ARRAY_BUFFER, idBufferStartTime);
-	glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, 0);
-	glDrawArrays(GL_POINTS, 0, NPARTICLES);
-	glDisableVertexAttribArray(0);
-	glDisableVertexAttribArray(1);
-
-
-	glDepthMask(GL_TRUE);		// don't forget to switch the depth test updates back on
 
 
 	// essential for double-buffering technique
