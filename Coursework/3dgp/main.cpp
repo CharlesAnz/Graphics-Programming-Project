@@ -40,6 +40,7 @@ GLuint idTexWood;
 GLuint idTexScreen;
 GLuint idFBO;
 GLuint idFBO1;
+GLuint idTexNormal;
 GLuint idTexFabric;
 GLuint idTexNone;
 GLuint bufQuad;
@@ -47,9 +48,9 @@ GLuint WImage = 800, HImage = 600;
 GLuint idTexShadowMap;
 GLuint idTexSmoke;
 
+
 GLuint idBufferVelocity;
 GLuint idBufferStartTime;
-
 
 // Character position
 vec3 posPlayer = vec3(5.2f, -10.0f, -25.0f);
@@ -214,65 +215,19 @@ bool init()
 	if (!lamp.load("models\\lamp.obj")) return false;
 	if (!knife.load("models\\02_-_Knife.obj")) return false;
 
-	// Initialise the View Matrix (initial position of the camera)
-	matrixView = rotate(mat4(1.f), radians(angleTilt), vec3(1.f, 0.f, 0.f));
-	matrixView *= lookAt(
-		vec3(0.0, 5.0, 10.0),
-		vec3(0.0, 5.0, 0.0),
-		vec3(0.0, 1.0, 0.0));
-
-	// setup the screen background colour
-	glClearColor(0.8f, 0.25f, 0.22f, 1.0f);   // deep grey background
-
-	// setup lighting
-
-	//Emissive Light
-	Program.SendUniform("lightAmbient1.on", 0);
-	Program.SendUniform("lightAmbient1.color", 1.0, 1.0, 1.0);
-	
-	//Natural ambient light
-	Program.SendUniform("lightAmbient2.on", 1);
-	Program.SendUniform("lightAmbient2.color", 0.1, 0.1, 0.1);
-	Program.SendUniform("materialAmbient", 0.2, 0.2, 0.2);
-
-	//Directional Light
-	Program.SendUniform("lightDir.on", 1);
-	Program.SendUniform("lightDir.direction", 1.0, 0.5, 1.0);
-	Program.SendUniform("lightDir.diffuse", 0.02, 0.02, 0.02);	  // dimmed white lights
-
-	//Spot light
-	Program.SendUniform("lightSpot.on", 1);
-	Program.SendUniform("lightSpot.position", 20.0f, 25.0f, -5.0f);
-	Program.SendUniform("lightSpot.diffuse", 0.7, 0.7, 0.7);
-	Program.SendUniform("lightSpot.specular", 1.0, 1.0, 1.0);
-	Program.SendUniform("lightSpot.direction", 0.0f, -1.0f, 0.0f);
-	Program.SendUniform("lightSpot.cutoff", 80.0f);
-	Program.SendUniform("lightSpot.attenuation", 5.0f);
-	Program.SendUniform("materialSpecular", 0.3, 0.3, 0.3);
-	Program.SendUniform("shininess", 8.0);
-
-	//Lamp 1 Point light
-	Program.SendUniform("lightPoint1.on", 1);
-	Program.SendUniform("lightPoint1.position", 19.0f, 0.5f, 10.1f);
-	Program.SendUniform("lightPoint1.diffuse", 0.5, 0.5, 0.5);
-	Program.SendUniform("lightPoint1.specular", 0.5, 0.5, 0.5);
-	Program.SendUniform("lightPoint1.att_quadratic", 0.1);
-	Program.SendUniform("materialSpecular", 0.3, 0.3, 0.3);
-	Program.SendUniform("shininess", 8.0);
-	
-	//Lamp 2 Point Light
-	Program.SendUniform("lightPoint2.on", 1);
-	Program.SendUniform("lightPoint2.position", 48.8f, 4.0f, -46.85f);
-	Program.SendUniform("lightPoint2.diffuse", 0.5, 0.5, 0.5);
-	Program.SendUniform("lightPoint2.specular", 0.5, 0.5, 0.5);
-	Program.SendUniform("lightPoint2.att_quadratic", 0.1);
-	Program.SendUniform("materialSpecular", 0.3, 0.3, 0.3);
-	Program.SendUniform("shininess", 8.0);
-	
 	// Send the texture info to the shaders
+	glActiveTexture(GL_TEXTURE0);
 	Program.SendUniform("texture0", 0);
 	ProgramEffect.SendUniform("texture0", 0);
 	ProgramParticle.SendUniform("texture0", 0);
+
+	// Setup NORMAL texturing
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, idTexNormal);
+	Program.SendUniform("textureNormal", 1);
+	Program.SendUniform("normalPower", 0.0f);
+
+	glActiveTexture(GL_TEXTURE0);
 
 	C3dglBitmap bm;
 
@@ -307,11 +262,54 @@ bool init()
 		GL_UNSIGNED_BYTE, bm.GetBits());
 
 	// none (simple-white) texture
+	glActiveTexture(GL_TEXTURE0);
 	glGenTextures(1, &idTexNone);
 	glBindTexture(GL_TEXTURE_2D, idTexNone);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	BYTE bytes[] = { 255, 255, 255 };
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_BGR, GL_UNSIGNED_BYTE, &bytes);
+
+	// Create Quad
+	float vertices[] = {
+		0.0f, 0.0f, 0.0f,	0.0f, 0.0f,
+		1.0f, 0.0f, 0.0f,	1.0f, 0.0f,
+		1.0f, 1.0f, 0.0f,	1.0f, 1.0f,
+		0.0f, 1.0f, 0.0f,	0.0f, 1.0f
+	};
+	// Generate the buffer name
+	glGenBuffers(1, &bufQuad);
+	// Bind the vertex buffer and send data
+	glBindBuffer(GL_ARRAY_BUFFER, bufQuad);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+	// Prepare the particle buffers
+	std::vector<float> bufferVelocity;
+	std::vector<float> bufferStartTime;
+	float time = 0;
+	for (int i = 0; i < NPARTICLES; i++)
+	{
+		float theta = M_PI / 4.5f * (float)rand() / (float)RAND_MAX;
+		float phi = M_PI * 5.0f * (float)rand() / (float)RAND_MAX;
+		float x = sin(theta) * cos(phi);
+		float y = cos(theta);
+		float z = sin(theta) * sin(phi);
+		float v = 0.1 + 0.2f * (float)rand() / (float)RAND_MAX;
+
+		bufferVelocity.push_back(x * v);
+		bufferVelocity.push_back(y * v);
+		bufferVelocity.push_back(z * v);
+
+		bufferStartTime.push_back(time);
+		time += PERIOD;
+	}
+	glGenBuffers(1, &idBufferVelocity);
+	glBindBuffer(GL_ARRAY_BUFFER, idBufferVelocity);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * bufferVelocity.size(), &bufferVelocity[0],
+		GL_STATIC_DRAW);
+	glGenBuffers(1, &idBufferStartTime);
+	glBindBuffer(GL_ARRAY_BUFFER, idBufferStartTime);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * bufferStartTime.size(), &bufferStartTime[0],
+		GL_STATIC_DRAW);
 
 	// Create shadow map texture
 	glActiveTexture(GL_TEXTURE7);
@@ -380,51 +378,62 @@ bool init()
 
 	// switch back to window-system-provided framebuffer
 	glBindFramebufferEXT(GL_FRAMEBUFFER, 0);
+
+	// setup lighting
+
+	//Emissive Light
+	Program.SendUniform("lightAmbient1.on", 0);
+	Program.SendUniform("lightAmbient1.color", 1.0, 1.0, 1.0);
+
+	//Natural ambient light
+	Program.SendUniform("lightAmbient2.on", 1);
+	Program.SendUniform("lightAmbient2.color", 0.1, 0.1, 0.1);
+	Program.SendUniform("materialAmbient", 0.2, 0.2, 0.2);
+
+	//Directional Light
+	Program.SendUniform("lightDir.on", 1);
+	Program.SendUniform("lightDir.direction", 1.0, 0.5, 1.0);
+	Program.SendUniform("lightDir.diffuse", 0.02, 0.02, 0.02);	  // dimmed white lights
+
+	//Spot light
+	Program.SendUniform("lightSpot.on", 1);
+	Program.SendUniform("lightSpot.position", 20.0f, 19.0f, -5.0f);
+	Program.SendUniform("lightSpot.diffuse", 0.7, 0.7, 0.7);
+	Program.SendUniform("lightSpot.specular", 1.0, 1.0, 1.0);
+	Program.SendUniform("lightSpot.direction", 0.0f, -1.0f, 0.0f);
+	Program.SendUniform("lightSpot.cutoff", 80.0f);
+	Program.SendUniform("lightSpot.attenuation", 5.0f);
+	Program.SendUniform("materialSpecular", 0.3, 0.3, 0.3);
+	Program.SendUniform("shininess", 8.0);
+
+	//Lamp 1 Point light
+	Program.SendUniform("lightPoint1.on", 1);
+	Program.SendUniform("lightPoint1.position", 19.0f, 0.5f, 10.1f);
+	Program.SendUniform("lightPoint1.diffuse", 0.5, 0.5, 0.5);
+	Program.SendUniform("lightPoint1.specular", 0.5, 0.5, 0.5);
+	Program.SendUniform("lightPoint1.att_quadratic", 0.1);
+	Program.SendUniform("materialSpecular", 0.3, 0.3, 0.3);
+	Program.SendUniform("shininess", 8.0);
+
+	//Lamp 2 Point Light
+	Program.SendUniform("lightPoint2.on", 1);
+	Program.SendUniform("lightPoint2.position", 48.8f, 4.0f, -46.85f);
+	Program.SendUniform("lightPoint2.diffuse", 0.5, 0.5, 0.5);
+	Program.SendUniform("lightPoint2.specular", 0.5, 0.5, 0.5);
+	Program.SendUniform("lightPoint2.att_quadratic", 0.1);
+	Program.SendUniform("materialSpecular", 0.3, 0.3, 0.3);
+	Program.SendUniform("shininess", 8.0);
+
+	// Initialise the View Matrix (initial position of the camera)
+	matrixView = rotate(mat4(1.f), radians(angleTilt), vec3(1.f, 0.f, 0.f));
+	matrixView *= lookAt(
+		vec3(0.0, 5.0, 10.0),
+		vec3(0.0, 5.0, 0.0),
+		vec3(0.0, 1.0, 0.0));
+
+	// setup the screen background colour
+	glClearColor(0.2f, 0.2f, 0.2f, 1.0f);   // deep grey background
 	
-	// Create Quad
-	float vertices[] = {
-		0.0f, 0.0f, 0.0f,	0.0f, 0.0f,
-		1.0f, 0.0f, 0.0f,	1.0f, 0.0f,
-		1.0f, 1.0f, 0.0f,	1.0f, 1.0f,
-		0.0f, 1.0f, 0.0f,	0.0f, 1.0f
-	};
-	// Generate the buffer name
-	glGenBuffers(1, &bufQuad);
-	// Bind the vertex buffer and send data
-	glBindBuffer(GL_ARRAY_BUFFER, bufQuad);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	
-	// Prepare the particle buffers
-	std::vector<float> bufferVelocity;
-	std::vector<float> bufferStartTime;
-	float time = 0;
-	for (int i = 0; i < NPARTICLES; i++)
-	{
-		float theta = M_PI / 4.5f * (float)rand() / (float)RAND_MAX;
-		float phi = M_PI * 5.0f * (float)rand() / (float)RAND_MAX;
-		float x = sin(theta) * cos(phi);
-		float y = cos(theta);
-		float z = sin(theta) * sin(phi);
-		float v = 0.1 + 0.2f * (float)rand() / (float)RAND_MAX;
-
-		bufferVelocity.push_back(x * v);
-		bufferVelocity.push_back(y * v);
-		bufferVelocity.push_back(z * v);
-
-		bufferStartTime.push_back(time);
-		time += PERIOD;
-	}
-	glGenBuffers(1, &idBufferVelocity);
-	glBindBuffer(GL_ARRAY_BUFFER, idBufferVelocity);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * bufferVelocity.size(), &bufferVelocity[0],
-		GL_STATIC_DRAW);
-	glGenBuffers(1, &idBufferStartTime);
-	glBindBuffer(GL_ARRAY_BUFFER, idBufferStartTime);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * bufferStartTime.size(), &bufferStartTime[0],
-		GL_STATIC_DRAW);
-
-	
-
 	cout << endl;
 	cout << "Use:" << endl;
 	cout << "  WASD or arrow key to navigate" << endl;
@@ -467,12 +476,14 @@ vec3 PlayerDirection(vec3 playerPos, float Tdelta)
 }
 
 
-void renderObjects(mat4 m, float theta, float deltaT, bool renderRoom)
+void renderObjects(mat4 matrixView, float theta, float deltaT, bool renderRoom)
 {	
+	mat4 m = matrixView;
+
+	glActiveTexture(GL_TEXTURE0);
+
 	// setup materials - grey
 	Program.SendUniform("materialDiffuse", 0.6f, 0.6f, 0.6f);
-
-	glBindTexture(GL_TEXTURE_2D, idTexNone);;
 
 	// Pendulum mechanics
 	static float alpha = 0;
@@ -502,7 +513,6 @@ void renderObjects(mat4 m, float theta, float deltaT, bool renderRoom)
 	glutSolidSphere(1, 32, 32);
 	Program.SendUniform("lightAmbient1.on", 0);
 	
-
 	// setup lamp2 lightbulb
 	Program.SendUniform("materialAmbient", 1.0, 1.0, 1.0);
 	Program.SendUniform("lightAmbient1.on", lamp2);
@@ -513,7 +523,6 @@ void renderObjects(mat4 m, float theta, float deltaT, bool renderRoom)
 	glutSolidSphere(1, 32, 32);
 	Program.SendUniform("lightAmbient1.on", 0);
 	
-
 	// lamp1
 	Program.SendUniform("materialAmbient", 0.2, 0.2, 0.2);
 	m = matrixView;
@@ -541,8 +550,9 @@ void renderObjects(mat4 m, float theta, float deltaT, bool renderRoom)
 	m = scale(m, vec3(0.1f, 0.1f, 0.1f));
 	lamp.render(m);
 
-	// vase
+	// vase	
 	m = matrixView;
+	glBindTexture(GL_TEXTURE_2D, idTexNone);
 	m = translate(m, vec3(20.0f, -2, 2.0f));
 	m = rotate(m, radians(160.f), vec3(0.0f, 1.0f, 0.0f));
 	m = scale(m, vec3(0.3f, 0.3f, 0.3f));
@@ -557,11 +567,9 @@ void renderObjects(mat4 m, float theta, float deltaT, bool renderRoom)
 	cigarette.render(2, m);
 	cigarette.render(3, m);
 
+	Program.SendUniform("normalPower", 1.0f);
 	if (renderRoom == true)
 	{
-		// setup materials - dark grey
-		Program.SendUniform("materialDiffuse", 0.3f, 0.3f, 0.3f);
-
 		// living room
 		m = matrixView;
 		m = translate(m, vec3(20.0f, -17, 2.0f));
@@ -643,7 +651,9 @@ void renderObjects(mat4 m, float theta, float deltaT, bool renderRoom)
 	m = rotate(m, radians(120.f), vec3(0.0f, 1.0f, 0.0f));
 	// the GLUT objects require the Model View Matrix setup
 	Program.SendUniform("matrixModelView", m);
+	glFrontFace(GL_CW);
 	glutSolidTeapot(2.0);
+	glFrontFace(GL_CCW);
 
 	// setup materials - dark grey
 	Program.SendUniform("materialDiffuse", 0.2f, 0.2f, 0.9f);
@@ -655,7 +665,6 @@ void renderObjects(mat4 m, float theta, float deltaT, bool renderRoom)
 	m = rotate(m, radians(-270.f), vec3(0.0f, 0.0f, 1.0f));
 	m = scale(m, vec3(0.7f, 0.7f, 0.7f));
 	m = rotate(m, radians(90.f) * theta * 0.1f, vec3(1.0f, 0.0f, 0.0f));
-
 	knife.render(m);
 
 	// player's position
@@ -676,6 +685,7 @@ void renderObjects(mat4 m, float theta, float deltaT, bool renderRoom)
 	if (walkRight == false) m = rotate(m, radians(90.0f), vec3(0, 0, 1));
 	m = scale(m, vec3(0.05f, 0.05f, 0.05f));
 	player.render(m);
+
 
 	// setup materials - blue
 	Program.SendUniform("materialDiffuse", 0.2f, 0.2f, 0.5f);
@@ -732,17 +742,18 @@ void createShadowMap(float theta, float deltaT, 					// animation control variab
 
 	// setup the viewport to 2x2 the original and wide (120 degrees) FoV (Field of View)
 	glViewport(0, 0, w * 2, h * 2);
-	mat4 matrixProjection = perspective(radians(120.f), (float)w / (float)h, 0.5f, 90.0f);
-	Program.SendUniform("matrixProjection", matrixProjection);
+	mat4 matrixProjectionShadow = perspective(radians(120.f), (float)w / (float)h, 0.5f, 90.0f);
+	Program.SendUniform("matrixProjection", matrixProjectionShadow);
+	//depthViewMatrix = glm::lookAt(lightInvDir, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0))
 
 	// prepare the camera
-	mat4 matrixView = lookAt(
+	mat4 matrixViewShadow = lookAt(
 		vec3(x, y, z),
 		vec3(centerx, centery, centerz),
 		vec3(upx, upy, upz));
 
 	// send the View Matrix
-	Program.SendUniform("matrixView", matrixView);
+	Program.SendUniform("matrixView", matrixViewShadow);
 
 	// Bind the Framebuffer
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, idFBO1);
@@ -766,10 +777,10 @@ void createShadowMap(float theta, float deltaT, 					// animation control variab
 		{ 0.0, 0.0, 0.5, 0.0 },
 		{ 0.5, 0.5, 0.5, 1.0 }
 	};
-	Program.SendUniform("matrixShadow", bias * matrixProjection * matrixView);
+	Program.SendUniform("matrixShadow", bias * matrixProjectionShadow * matrixViewShadow);
 
 	// Render all objects in the scene (except the lamps)	
-	renderObjects(matrixView, theta, deltaT, false);
+	renderObjects(matrixViewShadow, theta, deltaT, false);
 
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -792,14 +803,16 @@ void render()
 	float deltaT = tt - time;
 	time = tt;
 
-	if(lamp1 == 1) createShadowMap(theta, deltaT, 19.0f, 0.5f, 10.1f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-	//if(lamp2 == 1) createShadowMap(theta, deltaT, 48.8f, 4.0f, -46.85f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+	
+	createShadowMap(theta, deltaT, 48.8f, 4.0f, -46.85f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 
+	glCullFace(GL_BACK);
 
-
+	
 	// Pass 1: off-screen rendering
 	glBindFramebufferEXT(GL_FRAMEBUFFER, idFBO);
-
+	glEnable(GL_BLEND);
+	
 	// clear screen and buffers
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -814,12 +827,16 @@ void render()
 	// setup View Matrix
 	Program.SendUniform("matrixView", matrixView);
 
+	// revert to texture unit 0
+	glActiveTexture(GL_TEXTURE0);
+	renderObjects(matrixView, theta, deltaT, true);
+
 	// setup the point size
 	glEnable(GL_POINT_SPRITE);
 	glPointSize(2);
 
 	// particles
-	//glDepthMask(GL_FALSE);				// disable depth buffer updates
+	glDepthMask(GL_FALSE);				// disable depth buffer updates
 	glActiveTexture(GL_TEXTURE0);			// choose the active texture
 	glBindTexture(GL_TEXTURE_2D, idTexSmoke);	// bind the texture
 
@@ -840,15 +857,13 @@ void render()
 	glDisableVertexAttribArray(0);
 	glDisableVertexAttribArray(1);
 
-
 	glDepthMask(GL_TRUE);		// don't forget to switch the depth test updates back on
 	
-
-	renderObjects(m, theta, deltaT, true);
 	
 	// Pass 2: on-screen rendering
+	glDisable(GL_BLEND);
 	glBindFramebufferEXT(GL_FRAMEBUFFER, 0);
-
+	
 	ProgramEffect.Use();
 
 	// setup ortographic projection
@@ -874,9 +889,6 @@ void render()
 	glDisableVertexAttribArray(attribTextCoord);
 	reshape(WImage, HImage);
 	
-
-
-
 	// essential for double-buffering technique
 	glutSwapBuffers();
 

@@ -27,7 +27,7 @@ void main()
 	vec3 pos = initialPos + aVelocity * t + gravity * t * t; 
 	age = t / particleLifetime;
 
-	gl_PointSize = mix(10, 100, age);
+	gl_PointSize = mix(4, 40, age);
 
 	// calculate position (normal calculation not applicable here)
 	vec4 position = matrixModelView * vec4(pos, 1.0);

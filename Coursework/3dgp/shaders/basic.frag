@@ -10,6 +10,7 @@ in vec4 shadowCoord;
 in vec4 position;
 in vec3 normal;
 in vec2 texCoord0;
+in mat3 matrixTangent;
 
 out vec4 outColor;
 
@@ -20,6 +21,10 @@ uniform vec3 materialSpecular;
 uniform float shininess;
 uniform sampler2D texture0;
 uniform sampler2DShadow shadowMap;
+uniform sampler2D textureNormal;
+uniform float normalPower;
+
+vec3 normalNew;
 
 struct SPOT
 {
@@ -78,40 +83,45 @@ vec4 PointLight(POINT light)
 {
 	// Calculate Point Light
 	vec4 color = vec4(0, 0, 0, 0);
+	float dist = length(matrixView * vec4(light.position, 1) - position);
+	float att = 1 / (light.att_quadratic * dist * dist);
 	vec3 L = normalize(matrixView * vec4(light.position, 1) - position).xyz;
 	float NdotL = dot(normal, L);
 	if (NdotL > 0)
 		color += vec4(materialDiffuse * light.diffuse, 1) * NdotL;
+
 	vec3 V = normalize(-position.xyz);
 	vec3 R = reflect(-L, normal);
 	float RdotV = dot(R, V);
 	if (NdotL > 0 && RdotV > 0)
 	    color += vec4(materialSpecular * light.specular * pow(RdotV, shininess), 1);
-
-	float dist = length(matrixView * vec4(light.position, 1) - position);
-	float att = 1 / (light.att_quadratic * dist * dist);
+	
 
 	return color * att;
 }
 
 void main(void) 
 {
-  outColor = color;
-  
-  if (lightPoint1.on == 1) 
-		outColor += PointLight(lightPoint1);
+	outColor = color;
 
-  if (lightSpot.on == 1) 
+	normalNew = 2.0 * texture(textureNormal, texCoord0).xyz - vec3(1.0, 1.0, 1.0);
+	normalNew = normalize(matrixTangent * normalNew);
+  
+	if (lightSpot.on == 1) 
 		outColor += SpotLight(lightSpot);
+
+	if (lightPoint1.on == 1) 
+		outColor += PointLight(lightPoint1);
 
 	if (lightPoint2.on == 1) 
 		outColor += PointLight(lightPoint2);
-
-	outColor *= texture(texture0, texCoord0);
-
+		
 	// Calculation of the shadow
 	float shadow = 1.0;
 	if (shadowCoord.w > 0)	// if shadowCoord.w < 0 fragment is out of the Light POV
 		shadow = 0.5 + 0.5 * textureProj(shadowMap, shadowCoord);
-		outColor *= shadow;
+	outColor *= shadow;
+	
+
+	outColor *= texture(texture0, texCoord0);
 }
